@@ -1,0 +1,65 @@
+#!/bin/sh
+
+set -e
+
+if [ "$#" -ne 5 ]; then
+    echo "usage <app_name> <secrets_directory> <target> <profile> <use_cargo_bundle>"
+    exit 1
+fi
+
+APP_NAME=$1
+PRIVATE_DIRECTORY=$2
+TARGET=$3
+PROFILE=$4
+USE_CARGO_BUNDLE=$5
+
+# TODO: Make it more temp
+TEMPORARY_DIRECTORY=./temp
+APP_TEMPORARY_DIRECTORY=$TEMPORARY_DIRECTORY/$APP_NAME.app
+
+rm -rf $TEMPORARY_DIRECTORY
+rm -rf $APP_TEMPORARY_DIRECTORY
+
+mkdir -p $TEMPORARY_DIRECTORY
+mkdir -p $APP_TEMPORARY_DIRECTORY
+
+if [ "$PROFILE" == "debug" ]; then
+    cargo build --target $TARGET --profile "dev"
+else
+    cargo build --target $TARGET --profile $PROFILE
+fi
+
+if [ "$USE_CARGO_BUNDLE" == "1" ]; then
+    if [ "$PROFILE" == "debug" ]; then
+        cargo bundle --target $TARGET --profile "dev"
+    else
+        cargo bundle --target $TARGET --profile $PROFILE
+    fi
+
+    APP_TEMPORARY_DIRECTORY=target/$TARGET/$PROFILE/bundle/ios/$APP_NAME.app
+    cp $PRIVATE_DIRECTORY/private.mobileprovision $APP_TEMPORARY_DIRECTORY/embedded.mobileprovision
+
+    # cargo bundle doesn't respect iOS requirement for resources, we handle it manually
+    cp -r resources/* $APP_TEMPORARY_DIRECTORY
+    echo -n "APPL????" > $APP_TEMPORARY_DIRECTORY/PkgInfo
+else
+    cp target/$TARGET/$PROFILE/$APP_NAME $APP_TEMPORARY_DIRECTORY/$APP_NAME
+    cp Info.plist $APP_TEMPORARY_DIRECTORY/Info.plist
+    cp $PRIVATE_DIRECTORY/private.mobileprovision $APP_TEMPORARY_DIRECTORY/embedded.mobileprovision
+    cp -r resources/* $APP_TEMPORARY_DIRECTORY
+    echo -n "APPL????" > $APP_TEMPORARY_DIRECTORY/PkgInfo
+fi
+
+
+rcodesign sign --p12-file $PRIVATE_DIRECTORY/private.p12 --p12-password-file $PRIVATE_DIRECTORY/private.pass -e $APP_NAME.entitlements $APP_TEMPORARY_DIRECTORY 2> /dev/null
+mkdir -p $TEMPORARY_DIRECTORY/Payload
+cp -r $APP_TEMPORARY_DIRECTORY $TEMPORARY_DIRECTORY/Payload
+rm -rf $APP_NAME.ipa
+
+pushd $TEMPORARY_DIRECTORY
+zip -r ../$APP_NAME.ipa Payload > /dev/null
+popd
+
+rm -rf $TEMPORARY_DIRECTORY/Payload
+rm -rf $APP_TEMPORARY_DIRECTORY
+rm -r $TEMPORARY_DIRECTORY

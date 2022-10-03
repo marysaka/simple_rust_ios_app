@@ -1,0 +1,5 @@
+/target
+/sdk
+*.ipa
+*.app
+.DS_Store

@@ -1,0 +1,8 @@
+[package]
+name = "simple_rust_ios_app"
+description = "Some simple iOS Rust App for demonstration."
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cacao = { git = "https://github.com/ryanmcgrath/cacao.git", features = [ "uikit", "autolayout" ], default-features = false }

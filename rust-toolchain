@@ -1,0 +1,4 @@
+[toolchain]
+channel = "stable"
+targets = [ "aarch64-apple-ios" ]
+profile = "minimal"

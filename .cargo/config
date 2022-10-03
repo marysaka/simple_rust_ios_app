@@ -1,0 +1,10 @@
+[build]
+target = "aarch64-apple-ios"
+
+[target.aarch64-apple-ios]
+linker = "rust-lld"
+
+[env]
+CC_aarch64-apple-ios = "clang"
+IPHONEOS_DEPLOYMENT_TARGET = "7.0"
+IPHONEOS_SDKROOT = { value = "sdk/iPhoneOS15.5.sdk", relative = true, force = true }

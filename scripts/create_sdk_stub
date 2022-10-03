@@ -1,0 +1,187 @@
+#!/usr/bin/env python3
+
+from argparse import ArgumentParser
+import json
+import os
+import shutil
+import sys
+from typing import Any, Dict, List, Optional, Tuple
+import yaml
+
+
+def parse_arguments() -> Tuple[str, str]:
+    parser = ArgumentParser(
+        description="Create an SDK stub directory from a definition"
+    )
+    parser.add_argument("definition_yml_path", help="The YAML definition")
+    parser.add_argument(
+        "output_directory", help="The output path to use to store the stub SDK"
+    )
+
+    args = parser.parse_args()
+
+    definition_yml_path = os.path.abspath(args.definition_yml_path)
+    output_directory = os.path.abspath(args.output_directory)
+
+    return (definition_yml_path, output_directory)
+
+
+def get_library_name(lib_opaque_object: Any) -> str:
+    if type(lib_opaque_object) is str:
+        return lib_opaque_object
+    elif "name" in lib_opaque_object:
+        return lib_opaque_object["name"]
+    else:
+        raise Exception("TODO")
+
+
+def get_library_path(lib_opaque_object: Any, is_framework: bool) -> str:
+    if type(lib_opaque_object) is str:
+        lib_name = lib_opaque_object
+        if is_framework:
+            return f"/System/Library/Frameworks/{lib_name}.framework/{lib_name}"
+        else:
+            return f"/usr/lib/{lib_name}.dylib"
+    elif "name" in lib_opaque_object:
+        lib_name = lib_opaque_object["name"]
+        if is_framework:
+            return f"/System/Library/Frameworks/{lib_name}.framework/{lib_name}"
+        else:
+            return f"/usr/lib/{lib_name}.dylib"
+    elif "install_name" in lib_opaque_object:
+        return lib_opaque_object["install_name"]
+    else:
+        raise Exception("TODO")
+
+
+def get_library_tbd_path(lib_opaque_object: Any, is_framework: bool) -> str:
+    if type(lib_opaque_object) is str:
+        lib_name = lib_opaque_object
+        if is_framework:
+            return f"System/Library/Frameworks/{lib_name}.framework/{lib_name}.tbd"
+        else:
+            return f"usr/lib/{lib_name}.tbd"
+    elif "name" in lib_opaque_object:
+        lib_name = lib_opaque_object["name"]
+        if is_framework:
+            return f"System/Library/Frameworks/{lib_name}.framework/{lib_name}.tbd"
+        else:
+            return f"usr/lib/{lib_name}.tbd"
+    elif "tbd_name" in lib_opaque_object:
+        if lib_opaque_object["tbd_name"][0] == "/":
+            return lib_opaque_object["tbd_name"][1:]
+
+        return lib_opaque_object["tbd_name"]
+    else:
+        print(lib_opaque_object)
+        raise Exception("TODO")
+
+
+def get_arch_list(
+    definition: Dict[str, Any], library_definition: Any
+) -> Optional[List[str]]:
+    if type(library_definition) is str:
+        if "archs" in definition:
+            return definition["archs"]
+    elif "archs" in library_definition:
+        return library_definition["archs"]
+    elif "archs" in definition:
+        return definition["archs"]
+    return None
+
+
+def compute_targets(platform_name: str, archs: List[str]) -> str:
+    targets = []
+
+    for arch in archs:
+        targets.append(f"{arch}-{platform_name}")
+
+    return ", ".join(targets)
+
+
+def create_tbd_from_library_definition(
+    output_directory: str,
+    definition: Dict[str, Any],
+    library_definition: Any,
+    is_framework: bool,
+):
+    platform_name = definition["platform"]
+    tbd_path = os.path.join(
+        output_directory, get_library_tbd_path(library_definition, is_framework)
+    )
+    directory_name = os.path.dirname(tbd_path)
+
+    os.makedirs(directory_name, exist_ok=True)
+
+    archs = get_arch_list(definition, library_definition)
+
+    if archs is None:
+        raise Exception(f"Missing archs definition for {tbd_path}")
+
+    with open(tbd_path, "w") as f:
+        lines = ["--- !tapi-tbd", "tbd-version: 4"]
+
+        targets = compute_targets(platform_name, archs)
+        lines.append(f"targets: [ {targets} ]")
+        lines.append(
+            f"install-name: '{get_library_path(library_definition, is_framework)}'"
+        )
+
+        if type(library_definition) is not str and "symbols" in library_definition:
+            symbols = ", ".join(library_definition["symbols"])
+
+            lines.append(f"exports:")
+            lines.append(f"  - targets: [ {targets} ]")
+            lines.append(f"    symbols: [ {symbols} ]")
+
+        lines.append("...")
+        lines.append("")
+
+        f.write("\n".join(lines))
+
+
+def create_sdk_settings_json(output_directory: str, definition: Dict[str, Any]):
+    with open(os.path.join(output_directory, "SDKSettings.json"), "w") as sdk_json_file:
+        detail = {
+            "DisplayName": definition["display_name"],
+            "DefaultDeploymentTarget": definition["version"],
+            "MaximumDeploymentTarget": definition["version"],
+            "Version": definition["version"],
+        }
+
+        sdk_json_file.write(json.dumps(detail))
+
+
+def create_sdk_tree(output_directory: str, definition: Dict[str, Any]):
+    frameworks_list: List[object] = definition["frameworks"]
+    libraries_list: List[object] = definition["libraries"]
+
+    for framework in frameworks_list:
+        create_tbd_from_library_definition(
+            output_directory, definition, framework, True
+        )
+
+    for library in libraries_list:
+        create_tbd_from_library_definition(output_directory, definition, library, False)
+
+    create_sdk_settings_json(output_directory, definition)
+
+
+def main(definition_yml_path: str, output_directory: str) -> int:
+    if not os.path.exists(definition_yml_path):
+        print("Definition file not found!")
+        sys.exit(1)
+
+    with open(definition_yml_path, "r") as f:
+        definition = yaml.safe_load(f)
+
+    if os.path.exists(output_directory):
+        shutil.rmtree(output_directory)
+
+    create_sdk_tree(output_directory, definition)
+    return 0
+
+
+if __name__ == "__main__":
+    (definition_yml_path, output_directory) = parse_arguments()
+    sys.exit(main(definition_yml_path, output_directory))

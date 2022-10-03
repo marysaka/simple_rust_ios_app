@@ -1,0 +1,12 @@
+#!/bin/sh
+
+set -e
+
+if [ "$#" -ne 1 ]; then
+    echo "usage <app_name>"
+    exit 1
+fi
+
+APP_NAME=$1
+
+ideviceinstaller --install  $APP_NAME.ipa --debug
