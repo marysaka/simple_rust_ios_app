@@ -4,7 +4,7 @@ Demonstrate how an iOS application could be build, signed and installed on any O
 
 This is based on [ios-beta](https://github.com/ryanmcgrath/cacao/tree/trunk/examples/ios-beta) example from the cocoa repository.
 
-**Requires Rust 1.64 or upper**
+**Requires Rust 1.64 or upper and [apple-dev-tools-wrapper](https://github.com/marysaka/apple-dev-tools-wrapper)**.
 
 ## Disclaimer
 
